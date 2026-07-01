@@ -293,7 +293,7 @@ func (c *Client) listRepositories(ctx context.Context, owner Owner, operation st
 		}
 
 		var payload []repositoryPayload
-		_, err := c.getJSON(ctx, owner.Configured, "", operation, endpoint, query, &payload)
+		info, err := c.getJSON(ctx, owner.Configured, "", operation, endpoint, query, &payload)
 		if err != nil {
 			return nil, err
 		}
@@ -301,11 +301,26 @@ func (c *Client) listRepositories(ctx context.Context, owner Owner, operation st
 		for _, item := range payload {
 			repositories = append(repositories, item.toRepository(observedAt))
 		}
-		if len(payload) < pageLimit {
+		if len(payload) == 0 {
+			break
+		}
+		if total, ok := parseTotalCount(info.Header); ok && len(repositories) >= total {
 			break
 		}
 	}
 	return repositories, nil
+}
+
+func parseTotalCount(header http.Header) (int, bool) {
+	value := strings.TrimSpace(header.Get("X-Total-Count"))
+	if value == "" {
+		return 0, false
+	}
+	total, err := strconv.Atoi(value)
+	if err != nil || total < 0 {
+		return 0, false
+	}
+	return total, true
 }
 
 func (c *Client) ownerFromOrganization(req OwnerValidationRequest, payload organizationPayload) Owner {
